@@ -15,33 +15,6 @@ Erforderlich für Exchange Online Powershell
 
 Liste der skus - https://learn.microsoft.com/de-de/azure/active-directory/enterprise-users/licensing-service-plan-reference
 - Aktuelle skus die gesucht werden in Line ~423: Microsoft 365 Business Basic=BUSINESS_ESSENTIALS, Microsoft 365 Business Standard=BUSINESS_PREMIUM, Microsoft 365 Business Premium=SPB
-
-To DO
-* skus in variablen damit nicht manuell angepasst werden muss
-* Schauen ob Azure AD Connect pfade (OUs die gesynct werden) auslesbar und ggf. in OU-Auswahl markiert werden können
-* Zu Weitere Optionen - Anmeldeskript-Feld
-* Evtl Gruppen selectbox und selected in $groupsListBox
-
-* EXE erstellen Export-Executable -ScriptPath "C:\path\to\script.ps1" -OutputPath "C:\path\to\output.exe"
-
-* App-Kennwort für Admin erstellen https://mysignins.microsoft.com/security-info ?
-
-* Lizenz Mehrfachauswahl
- - Set-MsolUserLicense -UserPrincipalName "$username@$upnSuffix" -AddLicenses "YourTenant:SPE_E3", "YourTenant:VISIOCLIENT"
-
-* Sollte ausgewählte Lizenz nicht mehr vorhanden sein, über Crayon-API eine neue buchen - automatisieren mit API?
-
-* Zu freigegebenen Postfächern hinzufügen
-** Suchen Feld wo alle Postfächer ausgelesen
- - Add-MailboxPermission "Shared Mailbox" -User "$username@$upnSuffix" -AccessRights FullAccess -InheritanceType all
- - Add-RecipientPermission "Shared Mailbox" -Trustee "Mail Recipient" -AccessRights SendAs -confirm:$False
-
-Tests
-[X] Benutzer erstellen mit allen Funktionen (außer O365)
-[X] AD-Sync und hinzufügen von Lizenz testen
-[ ] Test was ohne Verfügbare Lizenz passiert
-[ ] Exchange Online Powershell verbindung
-[X] PSSession-Exit wenn Programm beendet
 #>
 
 # Wenn nicht als Admin starten

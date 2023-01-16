@@ -15,6 +15,33 @@ Erforderlich für Exchange Online Powershell
 
 Liste der skus - https://learn.microsoft.com/de-de/azure/active-directory/enterprise-users/licensing-service-plan-reference
 - Aktuelle skus die gesucht werden in Line ~423: Microsoft 365 Business Basic=BUSINESS_ESSENTIALS, Microsoft 365 Business Standard=BUSINESS_PREMIUM, Microsoft 365 Business Premium=SPB
+
+To DO
+* skus in variablen damit nicht manuell angepasst werden muss
+* Schauen ob Azure AD Connect pfade (OUs die gesynct werden) auslesbar und ggf. in OU-Auswahl markiert werden können
+* Zu Weitere Optionen - Anmeldeskript-Feld
+* Evtl Gruppen selectbox und selected in $groupsListBox
+
+* EXE erstellen Export-Executable -ScriptPath "C:\path\to\script.ps1" -OutputPath "C:\path\to\output.exe"
+
+* App-Kennwort für Admin erstellen https://mysignins.microsoft.com/security-info ?
+
+* Lizenz Mehrfachauswahl
+ - Set-MsolUserLicense -UserPrincipalName "$username@$upnSuffix" -AddLicenses "YourTenant:SPE_E3", "YourTenant:VISIOCLIENT"
+
+* Sollte ausgewählte Lizenz nicht mehr vorhanden sein, über Crayon-API eine neue buchen - automatisieren mit API?
+
+* Zu freigegebenen Postfächern hinzufügen
+** Suchen Feld wo alle Postfächer ausgelesen
+ - Add-MailboxPermission "Shared Mailbox" -User "$username@$upnSuffix" -AccessRights FullAccess -InheritanceType all
+ - Add-RecipientPermission "Shared Mailbox" -Trustee "Mail Recipient" -AccessRights SendAs -confirm:$False
+
+Tests
+[X] Benutzer erstellen mit allen Funktionen (außer O365)
+[X] AD-Sync und hinzufügen von Lizenz testen
+[ ] Test was ohne Verfügbare Lizenz passiert
+[ ] Exchange Online Powershell verbindung
+[X] PSSession-Exit wenn Programm beendet
 #>
 
 # Wenn nicht als Admin starten
@@ -37,11 +64,22 @@ Import-Module ActiveDirectory
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+#region Settings und Filter
+# Liste der ausgefilterten OUs
+$excludeOUs = {$_.DistinguishedName -notlike "*OU=Domain Controllers,*" -and $_.DistinguishedName -notlike "*OU=Computer*" -and $_.DistinguishedName -notlike "*OU=Server*" -and $_.DistinguishedName -notlike "*OU=Group*" -and $_.Name -notlike "*Deaktiviert*"}
+
+# Liste der ausgefilterten Sicherheitsgruppen
+$excludeGroups = "Domänencomputer","Domänencontroller","Domänen-Admins","Domänen-Benutzer","Domänen-Gäste","Richtlinien-Ersteller-Besitzer","Schreibgeschützte Domänencontroller","Klonbare Domänencontroller","Protected Users","Schlüsseladministratoren","DnsUpdateProxy","Exchange Install Domain Servers","SophosDomainUser","SophosDomainPowerUser","SophosDomainAdministrator","Zertifikatherausgeber","RAS- und IAS-Server","Zulässige RODC-Kennwortreplikationsgruppe","Abgelehnte RODC-Kennwortreplikationsgruppe","DnsAdmins","DHCP-Benutzer","DHCP-Administratoren","WSUS Administrators","WSUS Reporters","ADSyncAdmins","ADSyncOperators","ADSyncBrowse","ADSyncPasswordSet","SophosUser","SophosPowerUser","SophosAdministrator","SophosOnAccess","SophosFimDataReaders","Administratoren","Benutzer","Gäste","Druck-Operatoren","Sicherungs-Operatoren","Replikations-Operator","Remotedesktopbenutzer","Netzwerkkonfigurations-Operatoren","Leistungsüberwachungsbenutzer","Leistungsprotokollbenutzer","Distributed COM-Benutzer","IIS_IUSRS","Kryptografie-Operatoren","Ereignisprotokollleser","Zertifikatdienst-DCOM-Zugriff","RDS-Remotezugriffsserver","RDS-Endpunktserver","RDS-Verwaltungsserver","Hyper-V-Administratoren","Zugriffssteuerungs-Unterstützungsoperatoren","Remoteverwaltungsbenutzer","System Managed Accounts Group","Storage Repl. Admin","Server-Operatoren","Konten-Operatoren","Prä-Windows 2000 kompatibler Zugriff","Erstellungen eingehender Gesamtstrukturvertrauensstellung","Windows-Autorisierungszugriffsgruppe","Terminalserver-Lizenzserver","Schema-Admins","Organisations-Admins","Schreibgeschützte Domänencontroller der Organisation","Unternehmenssschlüsseladministratoren","Organization Management","Recipient Management","View-Only Organization Management","Public Folder Management","UM Management","Help Desk","Records Management","Discovery Management","Server Management","Delegated Setup","Hygiene Management","Compliance Management","Exchange Servers","Exchange Trusted Subsystem","Managed Availability Servers","Exchange Windows Permissions","ExchangeLegacyInterop","MailStore Impersonation","Security Reader","Security Administrator","Import Export"
+
+# Driveletters for homedrive
+$driveLetters = ("D:", "E:", "F:", "G:", "H:", "I:", "J:", "K:", "L:", "M:", "N:", "O:", "P:", "Q:", "R:", "S:", "T:", "U:", "V:", "W:", "X:", "Y:", "Z:")
+
+# Lizenz-Skus die angezeigt werden
+$showSkus = {$_.AccountSkuId -like '*BUSINESS_PREMIUM' -or $_.AccountSkuId -like '*BUSINESS_ESSENTIALS' -or $_.AccountSkuId -like '*SPB'}
+#endregion
+
 # Domänennamen holen
 $domain = (Get-WmiObject -Class Win32_ComputerSystem).Domain
-
-# Liste der ausgefilterten Sicherheitsgruppen (Auch Domänen-Admins)
-$excludeGroups = "Domänencomputer","Domänencontroller","Domänen-Admins","Domänen-Benutzer","Domänen-Gäste","Richtlinien-Ersteller-Besitzer","Schreibgeschützte Domänencontroller","Klonbare Domänencontroller","Protected Users","Schlüsseladministratoren","DnsUpdateProxy","Exchange Install Domain Servers","SophosDomainUser","SophosDomainPowerUser","SophosDomainAdministrator","Zertifikatherausgeber","RAS- und IAS-Server","Zulässige RODC-Kennwortreplikationsgruppe","Abgelehnte RODC-Kennwortreplikationsgruppe","DnsAdmins","DHCP-Benutzer","DHCP-Administratoren","WSUS Administrators","WSUS Reporters","ADSyncAdmins","ADSyncOperators","ADSyncBrowse","ADSyncPasswordSet","SophosUser","SophosPowerUser","SophosAdministrator","SophosOnAccess","SophosFimDataReaders","Administratoren","Benutzer","Gäste","Druck-Operatoren","Sicherungs-Operatoren","Replikations-Operator","Remotedesktopbenutzer","Netzwerkkonfigurations-Operatoren","Leistungsüberwachungsbenutzer","Leistungsprotokollbenutzer","Distributed COM-Benutzer","IIS_IUSRS","Kryptografie-Operatoren","Ereignisprotokollleser","Zertifikatdienst-DCOM-Zugriff","RDS-Remotezugriffsserver","RDS-Endpunktserver","RDS-Verwaltungsserver","Hyper-V-Administratoren","Zugriffssteuerungs-Unterstützungsoperatoren","Remoteverwaltungsbenutzer","System Managed Accounts Group","Storage Repl. Admin","Server-Operatoren","Konten-Operatoren","Prä-Windows 2000 kompatibler Zugriff","Erstellungen eingehender Gesamtstrukturvertrauensstellung","Windows-Autorisierungszugriffsgruppe","Terminalserver-Lizenzserver","Schema-Admins","Organisations-Admins","Schreibgeschützte Domänencontroller der Organisation","Unternehmenssschlüsseladministratoren","Organization Management","Recipient Management","View-Only Organization Management","Public Folder Management","UM Management","Help Desk","Records Management","Discovery Management","Server Management","Delegated Setup","Hygiene Management","Compliance Management","Exchange Servers","Exchange Trusted Subsystem","Managed Availability Servers","Exchange Windows Permissions","ExchangeLegacyInterop","MailStore Impersonation","Security Reader","Security Administrator","Import Export"
 
 # Fenster erstellen
 $form = New-Object System.Windows.Forms.Form
@@ -190,7 +228,7 @@ $ouComboBox.Location = New-Object System.Drawing.Size(95,140)
 $ouComboBox.Size = New-Object System.Drawing.Size(415,20)
 
 # OUs auslesen und filtern
-$ous = Get-ADOrganizationalUnit -Filter * | Where-Object {$_.DistinguishedName -notlike "*OU=Domain Controllers,*" -and $_.DistinguishedName -notlike "*OU=Computer*" -and $_.DistinguishedName -notlike "*OU=Server*" -and $_.DistinguishedName -notlike "*OU=Group*" -and $_.Name -notlike "*Deaktiviert*"}| Select-Object -ExpandProperty DistinguishedName
+$ous = Get-ADOrganizationalUnit -Filter * | Where-Object $excludeOUs | Select-Object -ExpandProperty DistinguishedName
 $ouComboBox.Items.AddRange($ous)
 
 # Funktion sicheres Passwort
@@ -329,7 +367,7 @@ $homeDrivePathLabel.Text = "Buchstabe und Pfad:"
 $driveLetterComboBox = New-Object System.Windows.Forms.ComboBox
 $driveLetterComboBox.Location = New-Object System.Drawing.Size(23, 330)
 $driveLetterComboBox.Size = New-Object System.Drawing.Size(35, 20)
-$driveLetterComboBox.Items.AddRange(("D:", "E:", "F:", "G:", "H:", "I:", "J:", "K:", "L:", "M:", "N:", "O:", "P:", "Q:", "R:", "S:", "T:", "U:", "V:", "W:", "X:", "Y:", "Z:"))
+$driveLetterComboBox.Items.AddRange($driveLetters)
 $driveLetterComboBox.SelectedIndex = 17
 $driveLetterComboBox.Enabled = $false
 
@@ -389,7 +427,7 @@ $connectAadButton.Add_Click({
     Connect-MsolService
     # Alle Verfügbaren Lizenzen anzeigen
     $licenses = Get-MsolAccountSku | Select-Object -Property AccountSkuId, ActiveUnits, ConsumedUnits
-    $licenses | where {$_.AccountSkuId -like '*BUSINESS_PREMIUM' -or $_.AccountSkuId -like '*BUSINESS_ESSENTIALS' -or $_.AccountSkuId -like '*SPB'} | ForEach-Object {$_ | Add-Member -MemberType NoteProperty -Name AvailableUnits -Value ($_.ActiveUnits - $_.ConsumedUnits)}
+    $licenses | where $showSkus | ForEach-Object {$_ | Add-Member -MemberType NoteProperty -Name AvailableUnits -Value ($_.ActiveUnits - $_.ConsumedUnits)}
     $licenses = $licenses | where {$_.AvailableUnits -gt 0}
     foreach ($item in $licenses){
         #$licenseComboBox.Items.Add("$($item.AccountSkuId) - $($item.AvailableUnits)")
@@ -500,7 +538,7 @@ $createButton.Add_Click({
                     # Warten bis eine Lizenz hinzugefügt wurde
                     while ($licenseComboBox.SelectedItem -eq $null -or $licenseComboBox.SelectedItem -eq "" -and $continueLoop -eq $True) {
                         $licenses = Get-MsolAccountSku | Select-Object -Property AccountSkuId, ActiveUnits, ConsumedUnits
-                        $licenses | where {$_.AccountSkuId -like '*BUSINESS_PREMIUM' -or $_.AccountSkuId -like '*BUSINESS_ESSENTIALS' -or $_.AccountSkuId -like '*SPB'} | ForEach-Object {$_ | Add-Member -MemberType NoteProperty -Name AvailableUnits -Value ($_.ActiveUnits - $_.ConsumedUnits)}
+                        $licenses | where $showSkus | ForEach-Object {$_ | Add-Member -MemberType NoteProperty -Name AvailableUnits -Value ($_.ActiveUnits - $_.ConsumedUnits)}
                         $licenses = $licenses | where {$_.AvailableUnits -gt 0}
                         $licenseComboBox.Items.Clear()
                         foreach ($item in $licenses){

@@ -14,7 +14,7 @@ Erforderlich für Exchange Online Powershell
 - .NET Framework 4.8 - https://dotnet.microsoft.com/download/dotnet-framework/thank-you/net48-web-installer
 
 Liste der skus - https://learn.microsoft.com/de-de/azure/active-directory/enterprise-users/licensing-service-plan-reference
-- Aktuelle skus die gesucht werden in Line ~423: Microsoft 365 Business Basic=BUSINESS_ESSENTIALS, Microsoft 365 Business Standard=BUSINESS_PREMIUM, Microsoft 365 Business Premium=SPB
+- Aktuelle skus die gesucht werden unter region Settings und Filter: Microsoft 365 Business Basic=BUSINESS_ESSENTIALS, Microsoft 365 Business Standard=BUSINESS_PREMIUM, Microsoft 365 Business Premium=SPB
 #>
 
 # Wenn nicht als Admin starten
@@ -32,10 +32,12 @@ $logPath = "C:\Scripts\Create_User_Log.txt"
 #Start-Transcript -Path "C:\Scripts\Create_User_Log_$time.txt"
 Start-Transcript -Path $logPath -Append
 
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Import-Module ActiveDirectory
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
 
 #region Settings und Filter
 # Liste der ausgefilterten OUs
@@ -57,7 +59,7 @@ $domain = (Get-WmiObject -Class Win32_ComputerSystem).Domain
 # Fenster erstellen
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Benutzer in Active Directory erstellen"
-$form.Size = New-Object System.Drawing.Size(550,450)
+$form.Size = New-Object System.Drawing.Size(550,600)
 $form.StartPosition = "CenterScreen"
 
 # Vorname
@@ -368,6 +370,22 @@ $licenseComboBox.Location = New-Object System.Drawing.Size(190,260)
 $licenseComboBox.Size = New-Object System.Drawing.Size(150,20)
 $licenseComboBox.Enabled = $false
 
+# Create a form with a search box and a list box
+$mailboxSearchBox = New-Object System.Windows.Forms.TextBox
+$mailboxSearchBox.Location = New-Object System.Drawing.Size(190,330)
+$mailboxSearchBox.Size = New-Object System.Drawing.Size(150,20)
+$mailboxSearchBox.Enabled = $false
+$mailboxSearchBox.Add_TextChanged({
+    $mailboxes = Search-Mailbox -Identity $mailboxSearchBox.Text -IgnoreDefaultScope -ResultSize Unlimited
+    $listBox.Items.Clear()
+    $listBox.Items.AddRange($mailboxes.Identity)
+})
+
+$mailboxListBox = New-Object System.Windows.Forms.ListBox
+$mailboxListBox.Location = New-Object System.Drawing.Size(190,360)
+$mailboxListBox.Size = New-Object System.Drawing.Size(150,100)
+$mailboxListBox.Enabled = $false
+
 #endregion
 
 #region Tooltips
@@ -392,12 +410,16 @@ $connectAadButton.Add_Click({
     if (Get-Module -Name MSOnline -ListAvailable) {
     } else {
         Install-Module -Name MSOnline -Force
+        $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
+        Write-Host "$time Module MSOnline wird installiert"
     }
     # Verbindung mit O365 herstellen
     $AADsession = New-PSSession
     Import-Module -Name MSOnline
     Enter-PSSession $AADsession
     Connect-MsolService
+    $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
+    Write-Host "$time Verbindung zu MsolService wird hergestellt"
     # Alle Verfügbaren Lizenzen anzeigen
     $licenses = Get-MsolAccountSku | Select-Object -Property AccountSkuId, ActiveUnits, ConsumedUnits
     $licenses | where $showSkus | ForEach-Object {$_ | Add-Member -MemberType NoteProperty -Name AvailableUnits -Value ($_.ActiveUnits - $_.ConsumedUnits)}
@@ -405,6 +427,7 @@ $connectAadButton.Add_Click({
     foreach ($item in $licenses){
         #$licenseComboBox.Items.Add("$($item.AccountSkuId) - $($item.AvailableUnits)")
         $licenseComboBox.Items.Add("$($item.AccountSkuId)")
+        $licenseComboBox.SelectedIndex = 0
     }
 })
 
@@ -413,24 +436,31 @@ $connectEXOButton = New-Object System.Windows.Forms.Button
 $connectEXOButton.Location = New-Object System.Drawing.Size(190,295)
 $connectEXOButton.Size = New-Object System.Drawing.Size(130,23)
 $connectEXOButton.Text = "Mit EXO verbinden"
-$connectEXOButton.Enabled = $false
+$connectEXOButton.Enabled = $true
 
-$connectAadButton.Add_Click({
+$connectEXOButton.Add_Click({
     $azureSyncCheckbox.Checked = $true
+    $mailboxSearchBox.Enabled = $true
+    $mailboxListBox.Enabled = $true
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    if (!(Get-Module -Name "ExchangeOnlineManagement")){
+    if (Get-Module -Name ExchangeOnlineManagement -ListAvailable){
+    } else {
         Install-Module -Name ExchangeOnlineManagement -Force
+        $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
+        Write-Host "$time Module ExchangeOnlineManagement wird installiert"
     }
     # Verbindung mit EXO herstellen
     Import-Module -Name ExchangeOnlineManagement
-    $EXOsession = New-PSSession
-    Enter-PSSession $EXOsession
+    #$EXOsession = New-PSSession
+    #Enter-PSSession $EXOsession
     Connect-ExchangeOnline
+    $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
+    Write-Host "$time Verbindung zu ExchangeOnline wird hergestellt"
 })
 
 # Erstellen-Button erstellen
 $createButton = New-Object System.Windows.Forms.Button
-$createButton.Location = New-Object System.Drawing.Size(180,370)
+$createButton.Location = New-Object System.Drawing.Size(180,500)
 $createButton.Size = New-Object System.Drawing.Size(75,23)
 $createButton.Text = "Erstellen"
 
@@ -456,8 +486,12 @@ $createButton.Add_Click({
         # Benutzer erstellen
         if ($ou -eq $null) {
             New-ADUser -Name "$firstname $lastname" -DisplayName "$firstname $lastname" -GivenName $firstname -Surname $lastname -SamAccountName $samAccountName -UserPrincipalName "$username@$upnSuffix" -EmailAddress "$username@$upnSuffix" -AccountPassword (ConvertTo-SecureString $passwordTextBox.Text -AsPlainText -Force) -Enabled $true -PasswordNeverExpires $passwordNeverExpiresCheckbox.Checked
+            $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
+            Write-Host "$time Benutzer wurde im Active Directory in Standard-OU angelegt"
         } else {
             New-ADUser -Name "$firstname $lastname" -DisplayName "$firstname $lastname" -GivenName $firstname -Surname $lastname -SamAccountName $samAccountName -UserPrincipalName "$username@$upnSuffix" -EmailAddress "$username@$upnSuffix" -AccountPassword (ConvertTo-SecureString $passwordTextBox.Text -AsPlainText -Force) -Enabled $true -PasswordNeverExpires $passwordNeverExpiresCheckbox.Checked -Path $ou
+            $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
+            Write-Host "$time Benutzer wurde im Active Directory $ou in angelegt"
         }
         # Prüfen ob der Benutzer erstellt wurde
         $user = Get-ADUser -Identity $samAccountName -ErrorAction SilentlyContinue
@@ -493,12 +527,12 @@ $createButton.Add_Click({
                 }
                 Set-ADUser -Identity $samAccountName -HomeDrive $driveLetter -HomeDirectory $drivePath
             }
-            Add-Type -AssemblyName System.Windows.Forms
-            [System.Windows.Forms.MessageBox]::Show("Benutzer $samAccountName wurde erfolgreich erstellt", "Erfolgreich", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
             Write-Host "$time Benutzer wurde erfolgreich erstellt"
             # Wenn Azure ADSync ausgewählt - sync starten
             if ($azureSyncCheckbox.Checked -eq $True) {
                 Start-AdSyncSyncCycle -PolicyType Delta
+                $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
                 Write-Host "$time Azure AD Sync wurde gestartet"
             }
             # Lizenz zuweisen
@@ -506,25 +540,30 @@ $createButton.Add_Click({
                 if ($licenseComboBox.SelectedItem -eq $null -or $licenseComboBox.SelectedItem -eq "") {
                     [System.Windows.Forms.MessageBox]::Show("Please get a new license from Crayon", "Keine freie Lizenz vorhanden", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
                     $counter = 0
-                    $maxIterations = 60 # Number of iterations before canceling the loop
+                    $maxIterations = 30 # Number of iterations before canceling the loop
                     $continueLoop = $True
                     # Warten bis eine Lizenz hinzugefügt wurde
                     while ($licenseComboBox.SelectedItem -eq $null -or $licenseComboBox.SelectedItem -eq "" -and $continueLoop -eq $True) {
                         $licenses = Get-MsolAccountSku | Select-Object -Property AccountSkuId, ActiveUnits, ConsumedUnits
                         $licenses | where $showSkus | ForEach-Object {$_ | Add-Member -MemberType NoteProperty -Name AvailableUnits -Value ($_.ActiveUnits - $_.ConsumedUnits)}
                         $licenses = $licenses | where {$_.AvailableUnits -gt 0}
-                        $licenseComboBox.Items.Clear()
                         foreach ($item in $licenses){
-                            $licenseComboBox.Items.Add("$($item.AccountSkuId) - $($item.AvailableUnits)")
+                            $licenseComboBox.Items.Add("$($item.AccountSkuId)")
+                            $licenseComboBox.SelectedIndex = 0
                         }
                         Start-Sleep -Seconds 10
+                        $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
+                        Write-Host "$time Warte bis eine Lizenz hinzugefügt wurde..."
                         $counter++
                         if ($counter -ge $maxIterations) {
                             [System.Windows.Forms.MessageBox]::Show("No available licenses found within 5 minutes, please check the status of the licenses", "License Timeout", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
                             $continueLoop = $False
+                            Exit-PSSession
+                            $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
+                            Write-Host "$time AADsession wurde beendet"
                         }
                     }
-                } else {
+                }
                 # Warten bis der Benutzer gesynct wurde, nach 1 Minuten wird abgebrochen
                 $synced = $false
                 $counter = 0
@@ -537,20 +576,27 @@ $createButton.Add_Click({
                         }
                     }
                     Start-Sleep -Seconds 10
+                    $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
                     Write-Host "$time Warte bis Benutzer synchronisiert wurde..."
                     $counter++
                     if ($counter -ge $timeout) {
                         [System.Windows.Forms.MessageBox]::Show("User was not synced within 1 minutes, please check the status of the synchronization", "Sync Timeout", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
                         break
+                        Exit-PSSession
+                        $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
+                        Write-Host "$time AADsession wurde beendet"
                     }
                     $selectedLicense = $licenseComboBox.SelectedItem.Split(" ")[0]
                     Set-MsolUser -UserPrincipalName "$username@$upnSuffix" -UsageLocation "DE" -ErrorAction SilentlyContinue
                     Set-MsolUserLicense -UserPrincipalName "$username@$upnSuffix" -AddLicenses $selectedLicense  -ErrorAction SilentlyContinue
                 }
-                }
+                $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
+                Write-Host "$time Benutzer wurde erfolgreich synchronisiert"
+                Exit-PSSession
+                $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
+                Write-Host "$time AADsession wurde beendet"
             }
-            if ($mailOptionCheckbox.Checked -eq $True) {
-            }
+            [System.Windows.Forms.MessageBox]::Show("Benutzer $samAccountName wurde erfolgreich erstellt", "Erfolgreich", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
             # Alle Felder zurücksetzen
             $firstnameTextBox.Text = ""
             $lastnameTextBox.Text = ""
@@ -564,6 +610,8 @@ $createButton.Add_Click({
             $azureSyncCheckbox.Checked = $false
             $homeDriveCheckbox.Checked = $false
             $homeDrivePathTextBox.Text = ""
+            $licenseComboBox.Text = ""
+            $licenseComboBox.Items.Clear()
             $licenseComboBox.Enabled = $false
             $showAllGroupsCheckBox.Checked = $false
             $groupsListBox.ClearSelected()
@@ -579,19 +627,11 @@ $createButton.Add_Click({
 
 # Button-Schliessen erstellen
 $closeButton = New-Object System.Windows.Forms.Button
-$closeButton.Location = New-Object System.Drawing.Size(280,370)
+$closeButton.Location = New-Object System.Drawing.Size(280,500)
 $closeButton.Size = New-Object System.Drawing.Size(75,23)
 $closeButton.Text = "Schliessen"
 
 $closeButton.Add_Click({
-    if ($mailOptionCheckbox.Checked -eq $True) {
-        Exit-PSSession $EXOsession
-        Write-Host "$time EXOsession wurde beendet"
-    }
-    if ($licenseComboBox.Enabled -eq $True) {
-        Exit-PSSession $AADsession
-        Write-Host "$time AADsession wurde beendet"
-    }
 $form.Close()
 })
 #endregion
@@ -629,6 +669,8 @@ $form.Controls.Add($connectAadButton)
 $form.Controls.Add($licenseLabel)
 $form.Controls.Add($licenseComboBox)
 $form.Controls.Add($connectEXOButton)
+$form.Controls.Add($mailboxSearchBox)
+$form.Controls.Add($mailboxListBox)
 $form.Controls.Add($createButton)
 $form.Controls.Add($closeButton)
 $form.ShowDialog()

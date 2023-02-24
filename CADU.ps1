@@ -13,15 +13,16 @@
 Erforderlich für Exchange Online Powershell
 - .NET Framework 4.8 - https://dotnet.microsoft.com/download/dotnet-framework/thank-you/net48-web-installer
 
-Liste der skus - https://learn.microsoft.com/de-de/azure/active-directory/enterprise-users/licensing-service-plan-reference
-- Aktuelle skus die gesucht werden unter region Settings und Filter: Microsoft 365 Business Basic=BUSINESS_ESSENTIALS, Microsoft 365 Business Standard=BUSINESS_PREMIUM, Microsoft 365 Business Premium=SPB
+Liste der skus 
+- https://learn.microsoft.com/de-de/azure/active-directory/enterprise-users/licensing-service-plan-reference
 
 Erfolgreich getestet mit:
-- Windows Server 2016 (10.0.14393.5127)
+- Windows Server 2016 (10.0.14393.5127), 2019 (10.0.17763.2931)
 - Powershell Version 5.1 (5.1.14393.5127) 
 
 To DO
 * Wenn Button "Connect to O365" gedrückt wird und kein zweites Anmeldefenster erscheint, über Taskleiste mit rechter Maustaste auf das Fenster?!?!?!
+* Wenn mit Powershell ausführen - fehlt Unselect contexmenu
 #>
 
 # Wenn nicht als Admin starten
@@ -33,10 +34,13 @@ If (!([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]
     }
 }
 
-# Log erstellen
-$time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
+# GetCurrentTime function
+function GetCurrentTime {
+    return Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
+}
+
+# Create a logfile
 $logPath = "C:\Scripts\Create_User_Log.txt"
-#Start-Transcript -Path "C:\Scripts\Create_User_Log_$time.txt"
 Start-Transcript -Path $logPath -Append
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -44,20 +48,22 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 #  Install MSOnline
 if (Get-Module -Name MSOnline -ListAvailable) {
+    Write-Host "$(GetCurrentTime) Module MSOnline wird aktualisiert"
+    #Update-Module -Name MSOnline -Force
     } else {
+        Write-Host "$(GetCurrentTime) Module MSOnline wird installiert"
         Install−PackageProvider −Name Nuget −Force
         Install-Module -Name MSOnline -Force
-        $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-        Write-Host "$time Module MSOnline wird installiert"
-    }
+}
 #  Install ExchangeOnlineManagement
 if (Get-Module -Name ExchangeOnlineManagement -ListAvailable){
+    Write-Host "$(GetCurrentTime) Module ExchangeOnlineManagement wird aktualisiert"
+    #Update-Module -Name ExchangeOnlineManagement -Force
     } else {
+        Write-Host "$(GetCurrentTime) Module ExchangeOnlineManagement wird installiert"
         Install−PackageProvider −Name Nuget −Force
         Install-Module -Name ExchangeOnlineManagement -Force
-        $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-        Write-Host "$time Module ExchangeOnlineManagement wird installiert"
-    }
+}
     
 # Module importieren
 Import-Module ActiveDirectory
@@ -78,7 +84,7 @@ $excludeGroups = "Domänencomputer","Domänencontroller","Domänen-Admins","Dom�
 $driveLetters = ("D:", "E:", "F:", "G:", "H:", "I:", "J:", "K:", "L:", "M:", "N:", "O:", "P:", "Q:", "R:", "S:", "T:", "U:", "V:", "W:", "X:", "Y:", "Z:")
 
 # Lizenz-Skus die angezeigt werden
-$showSkus = {$_.AccountSkuId -like '*BUSINESS_PREMIUM' -or $_.AccountSkuId -like '*BUSINESS_ESSENTIALS' -or $_.AccountSkuId -like '*SPB'}
+$showSkus = {$_.AccountSkuId -like '*BUSINESS_ESSENTIALS' -or $_.AccountSkuId -like '*BUSINESS_PREMIUM' -or $_.AccountSkuId -like '*SPB' -or $_.AccountSkuId -like '*SPE_E3' -or $_.AccountSkuId -like '*ENTERPRISEPACK' -or $_.AccountSkuId -like '*SPE_E5' -or $_.AccountSkuId -like '*ENTERPRISEPREMIUM' -or $_.AccountSkuId -like '*POWER_BI_PRO' -or $_.AccountSkuId -like '*PROJECT_P1' -or $_.AccountSkuId -like '*PROJECTPROFESSIONAL' -or $_.AccountSkuId -like '*VISIOONLINE_PLAN1' -or $_.AccountSkuId -like '*VISIO_PLAN2_DEPT'}
 #endregion
 
 # Domänennamen holen
@@ -96,10 +102,6 @@ $additionalOptionsPanel.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedS
 $additionalOptionsPanel.Location = New-Object System.Drawing.Point(550, 45)
 $additionalOptionsPanel.Size = New-Object System.Drawing.Size(200, 280)
 $additionalOptionsPanel.Visible = $false # startet unsichtbar
-
-# Fügen Sie die Steuerelemente (z.B. Buttons) zum Panel hinzu
-$additionalOptionsPanel.Controls.Add($someButton)
-$additionalOptionsPanel.Controls.Add($anotherButton)
 
 # Vorname
 $firstnameLabel = New-Object System.Windows.Forms.Label
@@ -242,6 +244,7 @@ $ouComboBox.Location = New-Object System.Drawing.Size(95,140)
 $ouComboBox.Size = New-Object System.Drawing.Size(415,20)
 
 # OUs auslesen und filtern
+Write-Host "$(GetCurrentTime): Getting all OUs"
 $ous = Get-ADOrganizationalUnit -Filter * | Where-Object $excludeOUs | Select-Object -ExpandProperty DistinguishedName
 $ouComboBox.Items.AddRange($ous)
 
@@ -278,6 +281,8 @@ $groupsListBox.Location = New-Object System.Drawing.Size(360,210)
 $groupsListBox.Size = New-Object System.Drawing.Size(150,100)
 $groupsListBox.SelectionMode = "MultiExtended"
 $groupsListBox.ContextMenu = $contextMenu
+
+Write-Host "$(GetCurrentTime): Getting all groups"
 $groups = Get-ADGroup -Filter {GroupCategory -eq "Security"} | Where-Object {$excludeGroups -notcontains $_.Name} | Select-Object -ExpandProperty Name
 $groupsListBox.Items.AddRange($groups)
 
@@ -420,8 +425,17 @@ $mailboxListBox = New-Object System.Windows.Forms.ListBox
 $mailboxListBox.Location = New-Object System.Drawing.Size(570,170)
 $mailboxListBox.Size = New-Object System.Drawing.Size(150,100)
 $mailboxListBox.SelectionMode = "MultiExtended"
-$mailboxListBox.ContextMenu = $contextMenu
+$mailboxListBox.ContextMenu = $contextMenu2
 $mailboxListBox.Enabled = $false
+
+$licenseComboBox.Add_SelectedIndexChanged({
+    if ($licenseComboBox.SelectedIndex -eq -1) {
+        $mailboxListBox.Enabled = $false
+    } else {
+        $mailboxListBox.Enabled = $true
+    }
+})
+
 #endregion
 
 #region Context menu
@@ -433,6 +447,15 @@ $unselectItem.Add_Click({
     $groupsListBox.SelectedIndex = -1
 })
 $contextMenu.MenuItems.Add($unselectItem)
+
+$contextMenu2 = New-Object System.Windows.Forms.ContextMenu
+$unselectItem2 = New-Object System.Windows.Forms.MenuItem
+$unselectItem2.Text = "Unselect"
+$unselectItem2.Add_Click({
+    $selectedItem2 = $mailboxListBox.SelectedItem
+    $mailboxListBox.SelectedIndex = -1
+})
+$contextMenu2.MenuItems.Add($unselectItem2)
 #endregion
 
 #region Tooltips
@@ -453,29 +476,29 @@ $connectAadButton.Text = "Connect to O365"
 $connectAadButton.Add_Click({
     $licenseComboBox.Enabled = $true
     $azureSyncCheckbox.Checked = $true
-    $mailboxListBox.Enabled = $true
-
-    $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-    Write-Host "$time Verbindung zu MsolService wird hergestellt"
+    Write-Host "$(GetCurrentTime) Verbindung zu MsolService wird hergestellt"
     Connect-MsolService
+    
     # Connect to EXO
-    $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-    Write-Host "$time Verbindung zu ExchangeOnline wird hergestellt"
+    Write-Host "$(GetCurrentTime) Verbindung zu ExchangeOnline wird hergestellt"
     Connect-ExchangeOnline -ShowBanner:$false
 
     # Alle Verfügbaren Lizenzen anzeigen
+    Write-Host "$(GetCurrentTime): Getting all O365 licenses"
     $licenses = Get-MsolAccountSku | Select-Object -Property AccountSkuId, ActiveUnits, ConsumedUnits
     $licenses | where $showSkus | ForEach-Object {$_ | Add-Member -MemberType NoteProperty -Name AvailableUnits -Value ($_.ActiveUnits - $_.ConsumedUnits)}
     $licenses = $licenses | where {$_.AvailableUnits -gt 0}
     foreach ($item in $licenses){
-        #$licenseComboBox.Items.Add("$($item.AccountSkuId) - $($item.AvailableUnits)")
         $licenseComboBox.Items.Add("$($item.AccountSkuId)")
         $licenseComboBox.SelectedIndex = 0
     }
 
     # Get all Mailboxes
-    $mailboxes = Get-EXOMailbox -ResultSize unlimited | Select-Object -ExpandProperty UserPrincipalName | Sort-Object UserPrincipalName
-    $mailboxListBox.Items.AddRange($mailboxes)
+    Write-Host "$(GetCurrentTime): Getting all mailboxes"
+    $mailboxes = Get-EXOMailbox -ResultSize unlimited | Sort-Object UserPrincipalName
+    foreach ($mailbox in $mailboxes) {
+        $mailboxListBox.Items.Add($mailbox.UserPrincipalName)
+    }
 })
 
 # Erstellen-Button erstellen
@@ -504,14 +527,13 @@ $createButton.Add_Click({
     } else {
         if (ValidatePassword($passwordTextBox.Text)) {
         # Benutzer erstellen
+        Write-Host "$(GetCurrentTime): Creating user in Active Directory"
         if ($ou -eq $null) {
             New-ADUser -Name "$firstname $lastname" -DisplayName "$firstname $lastname" -GivenName $firstname -Surname $lastname -SamAccountName $samAccountName -UserPrincipalName "$username@$upnSuffix" -EmailAddress "$username@$upnSuffix" -AccountPassword (ConvertTo-SecureString $passwordTextBox.Text -AsPlainText -Force) -Enabled $true -PasswordNeverExpires $passwordNeverExpiresCheckbox.Checked
-            $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-            Write-Host "$time Benutzer wurde im Active Directory in Standard-OU angelegt"
+            Write-Host "$(GetCurrentTime) Benutzer wurde im Active Directory in Standard-OU angelegt"
         } else {
             New-ADUser -Name "$firstname $lastname" -DisplayName "$firstname $lastname" -GivenName $firstname -Surname $lastname -SamAccountName $samAccountName -UserPrincipalName "$username@$upnSuffix" -EmailAddress "$username@$upnSuffix" -AccountPassword (ConvertTo-SecureString $passwordTextBox.Text -AsPlainText -Force) -Enabled $true -PasswordNeverExpires $passwordNeverExpiresCheckbox.Checked -Path $ou
-            $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-            Write-Host "$time Benutzer wurde im Active Directory $ou in angelegt"
+            Write-Host "$(GetCurrentTime) Benutzer wurde im Active Directory $ou in angelegt"
         }
         # Prüfen ob der Benutzer erstellt wurde
         $user = Get-ADUser -Identity $samAccountName -ErrorAction SilentlyContinue
@@ -547,13 +569,11 @@ $createButton.Add_Click({
                 }
                 Set-ADUser -Identity $samAccountName -HomeDrive $driveLetter -HomeDirectory $drivePath
             }
-            $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-            Write-Host "$time Benutzer wurde erfolgreich erstellt"
+            Write-Host "$(GetCurrentTime) Benutzer wurde erfolgreich erstellt"
             # Wenn Azure ADSync ausgewählt - sync starten
             if ($azureSyncCheckbox.Checked -eq $True) {
                 Start-AdSyncSyncCycle -PolicyType Delta
-                $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-                Write-Host "$time Azure AD Sync wurde gestartet"
+                Write-Host "$(GetCurrentTime) Azure AD Sync wurde gestartet"
             }
             # Lizenz zuweisen
             if ($licenseComboBox.Enabled -eq $True) {
@@ -572,14 +592,12 @@ $createButton.Add_Click({
                             $licenseComboBox.SelectedIndex = 0
                         }
                         Start-Sleep -Seconds 10
-                        $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-                        Write-Host "$time Warte bis eine Lizenz hinzugefügt wurde..."
+                        Write-Host "$(GetCurrentTime) Warte bis eine Lizenz hinzugefügt wurde..."
                         $counter++
                         if ($counter -ge $maxIterations) {
                             [System.Windows.Forms.MessageBox]::Show("No available licenses found within 5 minutes, please check the status of the licenses", "License Timeout", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
                             $continueLoop = $False
-                            $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-                            Write-Host "$time AADsession wurde beendet"
+                            Write-Host "$(GetCurrentTime) AADsession wurde beendet"
                         }
                     }
                 }
@@ -594,23 +612,20 @@ $createButton.Add_Click({
                             $synced = $true
                         }
                     }
-                    $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-                    Write-Host "$time Warte bis Benutzer synchronisiert wurde..."
+                    Write-Host "$(GetCurrentTime) Warte bis Benutzer synchronisiert wurde..."
                     Start-Sleep -Seconds 10
                     $counter++
                     if ($counter -ge $timeout) {
                         [System.Windows.Forms.MessageBox]::Show("User was not synced within 1 minutes, please check the status of the synchronization", "Sync Timeout", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
                         break
                         Disconnect-ExchangeOnline -Confirm:$false -InformationAction Ignore -ErrorAction SilentlyContinue
-                        $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-                        Write-Host "$time AADsession wurde beendet"
+                        Write-Host "$(GetCurrentTime) Script wird beendet"
                     }
                     $selectedLicense = $licenseComboBox.SelectedItem.Split(" ")[0]
                     Set-MsolUser -UserPrincipalName "$username@$upnSuffix" -UsageLocation "DE" -ErrorAction SilentlyContinue
                     Set-MsolUserLicense -UserPrincipalName "$username@$upnSuffix" -AddLicenses $selectedLicense  -ErrorAction SilentlyContinue
                 }
-                $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-                Write-Host "$time Lizenz erfolgreich hinzugefügt"
+                Write-Host "$(GetCurrentTime) Lizenz erfolgreich hinzugefügt"
                 # Postfachvollzugriff erteilen
                 if ($mailboxListBox.SelectedItems.Count -gt 0) {
                     # Wait for mailbox to be created
@@ -623,21 +638,17 @@ $createButton.Add_Click({
                         } catch {
                             # Wait for 5 seconds before trying again
                             Start-Sleep -Seconds 10
-                            $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-                            Write-Host "$time Warte bis Postfach erstellt wurde..."
+                            Write-Host "$(GetCurrentTime) Warte bis Postfach erstellt wurde..."
                         }
                     }
                     foreach ($mailbox in $mailboxListBox.SelectedItems) {
                         Add-MailboxPermission -Identity $mailbox -User "$username@$upnSuffix" -AccessRights FullAccess -InheritanceType All
-                        $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-                        Write-Host "$time Zugriff auf Postfach $mailbox erteilt"
+                        Write-Host "$(GetCurrentTime) Zugriff auf Postfach $mailbox erteilt"
                     }
                 }
-                $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-                Write-Host "$time Benutzer wurde erfolgreich synchronisiert"
+                Write-Host "$(GetCurrentTime) Benutzer wurde erfolgreich konfiguriert"
                 Disconnect-ExchangeOnline -Confirm:$false -InformationAction Ignore -ErrorAction SilentlyContinue
-                $time = Get-Date -Format "dd-MM-yyyy_HH-mm-ss"
-                Write-Host "$time AADsession wurde beendet"
+                Write-Host "$(GetCurrentTime)Script wird fertiggestellt"
             }
             [System.Windows.Forms.MessageBox]::Show("Benutzer $samAccountName wurde erfolgreich erstellt", "Erfolgreich", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
             # Alle Felder zurücksetzen
@@ -658,7 +669,9 @@ $createButton.Add_Click({
             $licenseComboBox.Enabled = $false
             $showAllGroupsCheckBox.Checked = $false
             $groupsListBox.ClearSelected()
+            $groupsListBox.Items.Clear()
             $mailboxListBox.ClearSelected()
+            $mailboxListBox.Items.Clear()
          } else {
                 [System.Windows.Forms.MessageBox]::Show("Ein Fehler ist aufgetreten. Bitte prüfe den die Log-Information unter $logPath", "Fehler", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
             }
@@ -669,7 +682,7 @@ $createButton.Add_Click({
     }
 })
 
-# Button-Schliessen erstellen
+# Create Close-Button
 $closeButton = New-Object System.Windows.Forms.Button
 $closeButton.Location = New-Object System.Drawing.Size(280,380)
 $closeButton.Size = New-Object System.Drawing.Size(75,23)
@@ -680,7 +693,7 @@ $closeButton.Add_Click({
 $form.Close()
 })
 
-# Fügen Sie den "Erweitern"-Button hinzu und definieren Sie das Klick-Ereignis
+# Create Erweitert-Button
 $expandButton = New-Object System.Windows.Forms.Button
 $expandButton.Text = "Erweitert"
 $expandButton.Location = New-Object System.Drawing.Point(430, 380)
@@ -692,6 +705,23 @@ $expandButton.add_Click({
         $form.Size = New-Object System.Drawing.Size(550, 455)
     }
     $form.Refresh()
+})
+
+# Create Refresh-Button
+$refreshButton = New-Object System.Windows.Forms.Button
+$refreshButton.Location = New-Object System.Drawing.Size(722,120)
+$refreshButton.Size = New-Object System.Drawing.Size(25,20)
+$refreshButton.Text = "( )"
+
+$refreshButton.Add_Click({
+    Write-Host "$(GetCurrentTime): Checking for new O365 licenses"
+    $licenses = Get-MsolAccountSku | Select-Object -Property AccountSkuId, ActiveUnits, ConsumedUnits
+    $licenses | where $showSkus | ForEach-Object {$_ | Add-Member -MemberType NoteProperty -Name AvailableUnits -Value ($_.ActiveUnits - $_.ConsumedUnits)}
+    $licenses = $licenses | where {$_.AvailableUnits -gt 0}
+    foreach ($item in $licenses){
+        $licenseComboBox.Items.Add("$($item.AccountSkuId)")
+        $licenseComboBox.SelectedIndex = 0
+    }
 })
 #endregion
 
@@ -727,6 +757,7 @@ $form.Controls.Add($o365OptionLabel)
 $form.Controls.Add($connectAadButton)
 $form.Controls.Add($licenseLabel)
 $form.Controls.Add($licenseComboBox)
+$form.Controls.Add($refreshButton)
 $form.Controls.Add($mailboxListLable)
 $form.Controls.Add($mailboxListBox)
 $form.Controls.Add($createButton)
